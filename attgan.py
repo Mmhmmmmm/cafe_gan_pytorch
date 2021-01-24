@@ -277,7 +277,7 @@ class AttGAN():
         gc1_loss = F.binary_cross_entropy_with_logits(dc1_fake, att_b)
         gc2_loss = F.binary_cross_entropy_with_logits(dc2_fake, 1-att_b)
         cm_loss = (att_ + catt_ - att-catt)/256
-        cm_loss = torch.sum(cm_loss, (1, 2, 3))
+        cm_loss = torch.sum(cm_loss)
 
         gr_loss = F.l1_loss(img_recon, img_a)
         g_loss = gf_loss + 10 * (gc1_loss+gc2_loss) + 100 * gr_loss + cm_loss
