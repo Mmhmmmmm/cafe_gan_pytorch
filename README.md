@@ -1,7 +1,12 @@
 # unoffical code for cafe-gan  baseed AtGAN 
 # just for UESTC-zjw use to experiment 
 # if you want to use it or you find some error in it ,you could tell us .thanks.
+differents:
 
+- add attention branch
+- add lose
+
+other is same
 
 # AttGAN-PyTorch
 
