@@ -182,7 +182,8 @@ for epoch in range(args.epochs):
 
         att_a = att_a.type(torch.float)
         att_b = att_b.type(torch.float)
-
+        # print(att_a)
+        # break
         att_a_ = (att_a * 2 - 1) * args.thres_int
         if args.b_distribution == 'none':
             att_b_ = (att_b * 2 - 1) * args.thres_int

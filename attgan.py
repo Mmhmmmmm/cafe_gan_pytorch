@@ -13,7 +13,7 @@ from torch.functional import norm
 import torch.nn as nn
 from nn import LinearBlock, Conv2dBlock, ConvTranspose2dBlock
 from torchsummary import summary
-
+from torch import linalg as LA
 
 # This architecture is for images of 128x128
 # In the original AttGAN, slim.conv2d uses padding 'same'
@@ -260,8 +260,8 @@ class AttGAN():
             p.requires_grad = False
 
         zs_a = self.G(img_a, mode='enc')
-        img_fake = self.G(zs_a, att_b_, mode='dec')
-        img_recon = self.G(zs_a, att_a_, mode='dec')
+        img_fake = self.G(zs_a, att_b-att_a, mode='dec')
+        img_recon = self.G(zs_a, att_a-att_a, mode='dec')
         d_real, da_real, dca_real, dc1_real, dc2_real, [
             att_, catt_, fe_, per1_, per2_] = self.D(img_a)
         d_fake, da_fake, dca_fake, dc1_fake, dc2_fake, [
@@ -276,8 +276,25 @@ class AttGAN():
                 d_fake, torch.ones_like(d_fake))
         gc1_loss = F.binary_cross_entropy_with_logits(dc1_fake, att_b)
         gc2_loss = F.binary_cross_entropy_with_logits(dc2_fake, 1-att_b)
-        cm_loss = (att_ + catt_ - att-catt)/256
-        cm_loss = torch.sum(cm_loss)
+        att_tmp = torch.zeros_like(att_)
+        catt_tmp = torch.zeros_like(catt_)
+        # cm_loss = torch.zeros(1)
+
+        att_c = torch.abs(att_b-att_a)
+
+        att_tmp = att_*(1-att_c) + catt_*(att_c)
+        catt_tmp = att_*(att_c) + catt_*(1-att_c)
+        # for i in range(len(att_a)):
+        #     if att_a[i] == att_b[i]:
+        #         cm_loss =cm_loss + LA.norm(att_[i]-att[i],1)+LA.norm(catt_[i]-catt[i],1)
+        #     else:
+        #         cm_loss =cm_loss + LA.norm(catt_[i]-att[i],1)+LA.norm(att_[i]-catt[i],1)
+
+        # cm_loss = (att_ + catt_ - att-catt)/256
+        cm_loss = LA.norm(att_tmp-att, ord=1, dim=(2, 3)) + \
+            LA.norm(catt_tmp-catt, ord=1, dim=(2, 3))
+
+        cm_loss = torch.sum(cm_loss)/256
 
         gr_loss = F.l1_loss(img_recon, img_a)
         g_loss = gf_loss + 10 * (gc1_loss+gc2_loss) + 100 * gr_loss + cm_loss
@@ -297,7 +314,7 @@ class AttGAN():
         for p in self.D.parameters():
             p.requires_grad = True
 
-        img_fake = self.G(img_a, att_b_).detach()
+        img_fake = self.G(img_a, att_b-att_a).detach()
         d_real, da_real, dca_real, dc1_real, dc2_real, _ = self.D(img_a)
         d_fake, da_fake, dca_fake, dc1_fake, dc2_fake, _ = self.D(img_fake)
 

@@ -102,7 +102,7 @@ for idx, (img_a, att_a) in enumerate(test_dataloader):
             att_b_ = (att_b * 2 - 1) * args.thres_int
             if i > 0:
                 att_b_[..., i - 1] = att_b_[..., i - 1] * args.test_int / args.thres_int
-            samples.append(attgan.G(img_a, att_b_))
+            samples.append(attgan.G(img_a, att_b-att_a))
         samples = torch.cat(samples, dim=3)
         if args.custom_img:
             out_file = test_dataset.images[idx]
