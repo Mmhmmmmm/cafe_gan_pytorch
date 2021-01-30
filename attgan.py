@@ -280,8 +280,8 @@ class AttGAN():
         catt_tmp = torch.zeros_like(catt_)
         # cm_loss = torch.zeros(1)
 
-        att_c = torch.abs(att_b-att_a)
-
+        att_c = torch.abs(att_b-att_a).view(-1,13,1,1)
+    
         att_tmp = att_*(1-att_c) + catt_*(att_c)
         catt_tmp = att_*(att_c) + catt_*(1-att_c)
         # for i in range(len(att_a)):
