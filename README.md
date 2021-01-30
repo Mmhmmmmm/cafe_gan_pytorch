@@ -1,4 +1,4 @@
-# unoffical code for cafe-gan  baseed AtGAN 
+# unoffical code for cafe-gan  baseed AttGAN 
 # just for UESTC-zjw use to experiment 
 # if you want to use it or you find some error in it ,you could tell us .thanks.
 differents:
