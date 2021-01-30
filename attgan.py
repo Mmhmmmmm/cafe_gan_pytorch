@@ -20,15 +20,153 @@ from torch import linalg as LA
 MAX_DIM = 64 * 16  # 1024
 
 
+class ConvGRUCell(nn.Module):
+    def __init__(self, n_attrs, in_dim, out_dim, kernel_size=3):
+        super(ConvGRUCell, self).__init__()
+        self.n_attrs = n_attrs
+        self.upsample = nn.ConvTranspose2d(
+            in_dim * 2 + n_attrs, out_dim, 4, 2, 1, bias=False)
+        self.reset_gate = nn.Sequential(
+            nn.Conv2d(in_dim + out_dim, out_dim, kernel_size,
+                      1, (kernel_size - 1) // 2, bias=False),
+            nn.BatchNorm2d(out_dim),
+            nn.Sigmoid()
+        )
+        self.update_gate = nn.Sequential(
+            nn.Conv2d(in_dim + out_dim, out_dim, kernel_size,
+                      1, (kernel_size - 1) // 2, bias=False),
+            nn.BatchNorm2d(out_dim),
+            nn.Sigmoid()
+        )
+        self.hidden = nn.Sequential(
+            nn.Conv2d(in_dim + out_dim, out_dim, kernel_size,
+                      1, (kernel_size - 1) // 2, bias=False),
+            nn.BatchNorm2d(out_dim),
+            nn.Tanh()
+        )
+
+    def forward(self, input, old_state, attr):
+        n, _, h, w = old_state.size()
+        attr = attr.view((n, self.n_attrs, 1, 1)).expand(
+            (n, self.n_attrs, h, w))
+        state_hat = self.upsample(torch.cat([old_state, attr], 1))
+        r = self.reset_gate(torch.cat([input, state_hat], dim=1))
+        z = self.update_gate(torch.cat([input, state_hat], dim=1))
+        new_state = r * state_hat
+        hidden_info = self.hidden(torch.cat([input, new_state], dim=1))
+        output = (1-z) * state_hat + z * hidden_info
+        return output, new_state
+
+
+class Generator(nn.Module):
+    def __init__(self, attr_dim, conv_dim=64, n_layers=5, shortcut_layers=2, stu_kernel_size=3, use_stu=True, one_more_conv=True):
+        super(Generator, self).__init__()
+        self.n_attrs = 13
+        self.n_layers = n_layers
+        self.shortcut_layers = min(shortcut_layers, n_layers - 1)
+        self.use_stu = use_stu
+
+        self.encoder = nn.ModuleList()
+        in_channels = 3
+        for i in range(self.n_layers):
+            self.encoder.append(nn.Sequential(
+                nn.Conv2d(in_channels, conv_dim * 2 ** i, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(conv_dim * 2 ** i),
+                nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            ))
+            in_channels = conv_dim * 2 ** i
+
+        if use_stu:
+            self.stu = nn.ModuleList()
+            for i in reversed(range(self.n_layers - 1 - self.shortcut_layers, self.n_layers - 1)):
+                self.stu.append(ConvGRUCell(
+                    self.n_attrs, conv_dim * 2 ** i, conv_dim * 2 ** i, stu_kernel_size))
+
+        self.decoder = nn.ModuleList()
+        for i in range(self.n_layers):
+            if i < self.n_layers - 1:
+                if i == 0:
+                    self.decoder.append(nn.Sequential(
+                        nn.ConvTranspose2d(conv_dim * 2 ** (self.n_layers - 1) + attr_dim,
+                                           conv_dim * 2 ** (self.n_layers - 1), 4, 2, 1, bias=False),
+                        nn.BatchNorm2d(in_channels),
+                        nn.ReLU(inplace=True)
+                    ))
+                elif i <= self.shortcut_layers:     # not <
+                    self.decoder.append(nn.Sequential(
+                        nn.ConvTranspose2d(conv_dim * 3 * 2 ** (self.n_layers - 1 - i),
+                                           conv_dim * 2 ** (self.n_layers - 1 - i), 4, 2, 1, bias=False),
+                        nn.BatchNorm2d(
+                            conv_dim * 2 ** (self.n_layers - 1 - i)),
+                        nn.ReLU(inplace=True)
+                    ))
+                else:
+                    self.decoder.append(nn.Sequential(
+                        nn.ConvTranspose2d(conv_dim * 2 ** (self.n_layers - i),
+                                           conv_dim * 2 ** (self.n_layers - 1 - i), 4, 2, 1, bias=False),
+                        nn.BatchNorm2d(
+                            conv_dim * 2 ** (self.n_layers - 1 - i)),
+                        nn.ReLU(inplace=True)
+                    ))
+            else:
+                in_dim = conv_dim * 3 if self.shortcut_layers == self.n_layers - 1 else conv_dim * 2
+                if one_more_conv:
+                    self.decoder.append(nn.Sequential(
+                        nn.ConvTranspose2d(
+                            in_dim, conv_dim // 4, 4, 2, 1, bias=False),
+                        nn.BatchNorm2d(conv_dim // 4),
+                        nn.ReLU(inplace=True),
+
+                        nn.ConvTranspose2d(
+                            conv_dim // 4, 3, 3, 1, 1, bias=False),
+                        nn.Tanh()
+                    ))
+                else:
+                    self.decoder.append(nn.Sequential(
+                        nn.ConvTranspose2d(in_dim, 3, 4, 2, 1, bias=False),
+                        nn.Tanh()
+                    ))
+
+    def forward(self, x, a):
+        # propagate encoder layers
+        y = []
+        x_ = x
+        for layer in self.encoder:
+            x_ = layer(x_)
+            y.append(x_)
+
+        out = y[-1]
+        n, _, h, w = out.size()
+        attr = a.view((n, self.n_attrs, 1, 1)).expand((n, self.n_attrs, h, w))
+        out = self.decoder[0](torch.cat([out, attr], dim=1))
+        stu_state = y[-1]
+
+        # propagate shortcut layers
+        for i in range(1, self.shortcut_layers + 1):
+            if self.use_stu:
+                stu_out, stu_state = self.stu[i-1](y[-(i+1)], stu_state, a)
+                out = torch.cat([out, stu_out], dim=1)
+                out = self.decoder[i](out)
+            else:
+                out = torch.cat([out, y[-(i+1)]], dim=1)
+                out = self.decoder[i](out)
+
+        # propagate non-shortcut layers
+        for i in range(self.shortcut_layers + 1, self.n_layers):
+            out = self.decoder[i](out)
+
+        return out
+
+
 class Generator(nn.Module):
     def __init__(self, enc_dim=64, enc_layers=5, enc_norm_fn='batchnorm', enc_acti_fn='lrelu',
                  dec_dim=64, dec_layers=5, dec_norm_fn='batchnorm', dec_acti_fn='relu',
-                 n_attrs=13, shortcut_layers=1, inject_layers=0, img_size=128):
+                 n_attrs=13, shortcut_layers=2, inject_layers=0, img_size=128, stu_kernel_size=3, use_stu=True):
         super(Generator, self).__init__()
         self.shortcut_layers = min(shortcut_layers, dec_layers - 1)
         self.inject_layers = min(inject_layers, dec_layers - 1)
         self.f_size = img_size // 2**enc_layers  # f_size = 4 for 128x128
-
+        self.use_stu = use_stu
         layers = []
         n_in = 3
         for i in range(enc_layers):
@@ -38,6 +176,12 @@ class Generator(nn.Module):
             )]
             n_in = n_out
         self.enc_layers = nn.ModuleList(layers)
+
+        if use_stu:
+            self.stu = nn.ModuleList()
+            for i in reversed(range(dec_layers - 1 - self.shortcut_layers, dec_layers - 1)):
+                self.stu.append(ConvGRUCell(n_attrs, enc_dim *
+                                            2 ** i, enc_dim * 2 ** i, stu_kernel_size))
 
         layers = []
         n_in = n_in + n_attrs  # 1024 + 13
@@ -67,15 +211,30 @@ class Generator(nn.Module):
     def decode(self, zs, a):
         a_tile = a.view(a.size(0), -1, 1, 1).repeat(1,
                                                     1, self.f_size, self.f_size)
-        z = torch.cat([zs[-1], a_tile], dim=1)
-        for i, layer in enumerate(self.dec_layers):
-            z = layer(z)
-            if self.shortcut_layers > i:  # Concat 1024 with 512
-                z = torch.cat([z, zs[len(self.dec_layers) - 2 - i]], dim=1)
-            if self.inject_layers > i:
-                a_tile = a.view(a.size(0), -1, 1, 1) \
-                          .repeat(1, 1, self.f_size * 2**(i+1), self.f_size * 2**(i+1))
-                z = torch.cat([z, a_tile], dim=1)
+        z = self.dec_layers[0](torch.cat([zs[-1], a_tile], dim=1))
+        stu_state = zs[-1]
+
+        # for i, layer in enumerate(self.dec_layers):
+        for i in range(1, self.shortcut_layers+1):
+            # z = layer(z)
+            # if self.shortcut_layers > i:  # Concat 1024 with 512
+            if self.use_stu:
+                stu_out, stu_state = self.stu[i -
+                                              1](zs[-(i+1)], stu_state, a)
+                z = torch.cat([z, stu_out], dim=1)
+                z = self.dec_layers[i](z)
+            else:
+
+                z = torch.cat([z, zs[-(i+1)]], dim=1)
+                z = self.dec_layers[i](z)
+
+            # if self.inject_layers > i:
+            #     a_tile = a.view(a.size(0), -1, 1, 1) \
+            #               .repeat(1, 1, self.f_size * 2**(i+1), self.f_size * 2**(i+1))
+            #     z = torch.cat([z, a_tile], dim=1)
+        for i in range(self.shortcut_layers+1, len(self.dec_layers)):
+            z = self.dec_layers[i](z)
+
         return z
 
     def forward(self, x, a=None, mode='enc-dec'):
@@ -280,8 +439,8 @@ class AttGAN():
         catt_tmp = torch.zeros_like(catt_)
         # cm_loss = torch.zeros(1)
 
-        att_c = torch.abs(att_b-att_a).view(-1,13,1,1)
-    
+        att_c = torch.abs(att_b-att_a)
+
         att_tmp = att_*(1-att_c) + catt_*(att_c)
         catt_tmp = att_*(att_c) + catt_*(1-att_c)
         # for i in range(len(att_a)):
