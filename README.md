@@ -5,7 +5,7 @@ differents:
 
 - add attention branch
 - add lose
-
+- not have inject layers becauseof STGAN
 other is same
 
 # AttGAN-PyTorch
@@ -71,8 +71,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python train.py \
 --img_size 128 \
 --shortcut_layers 1 \
---inject_layers 1 \
---experiment_name 128_shortcut1_inject1_none \
+--experiment_name 128_shortcut1_none \
 --gpu
 ```
 
