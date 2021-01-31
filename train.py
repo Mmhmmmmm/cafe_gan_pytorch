@@ -20,7 +20,7 @@ from data import check_attribute_conflict
 from helpers import Progressbar, add_scalar_dict
 from tensorboardX import SummaryWriter
 
-
+from utils import find_model
 attrs_default = [
     'Bald', 'Bangs', 'Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Bushy_Eyebrows',
     'Eyeglasses', 'Male', 'Mouth_Slightly_Open', 'Mustache', 'No_Beard', 'Pale_Skin', 'Young'
@@ -43,7 +43,7 @@ def parse(args=None):
 
     parser.add_argument('--img_size', dest='img_size', type=int, default=128)
     parser.add_argument('--shortcut_layers',
-                        dest='shortcut_layers', type=int, default=1)
+                        dest='shortcut_layers', type=int, default=3)
     parser.add_argument('--inject_layers',
                         dest='inject_layers', type=int, default=0)
     parser.add_argument('--enc_dim', dest='enc_dim', type=int, default=64)
@@ -108,7 +108,7 @@ def parse(args=None):
     parser.add_argument('--multi_gpu', dest='multi_gpu', action='store_true')
     parser.add_argument('--experiment_name', dest='experiment_name',
                         default=datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y"))
-
+    parser.add_argument('--load_epoch', dest='load_epoch', type=str, default='latest')
     return parser.parse_args(args)
 
 
@@ -150,6 +150,8 @@ print('Training images:', len(train_dataset), '/',
       'Validating images:', len(valid_dataset))
 
 attgan = AttGAN(args)
+attgan.load(find_model(join('output', args.experiment_name, 'checkpoint'), args.load_epoch))
+
 progressbar = Progressbar()
 writer = SummaryWriter(join('output', args.experiment_name, 'summary'))
 
