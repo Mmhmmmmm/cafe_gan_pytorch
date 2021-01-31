@@ -150,8 +150,10 @@ print('Training images:', len(train_dataset), '/',
       'Validating images:', len(valid_dataset))
 
 attgan = AttGAN(args)
-attgan.load(find_model(join('output', args.experiment_name, 'checkpoint'), args.load_epoch))
-
+try:
+    attgan.load(find_model(join('output', args.experiment_name, 'checkpoint'), args.load_epoch))
+except:
+    pass
 progressbar = Progressbar()
 writer = SummaryWriter(join('output', args.experiment_name, 'summary'))
 
