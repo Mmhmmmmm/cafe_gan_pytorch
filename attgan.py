@@ -315,13 +315,13 @@ class Discriminators(nn.Module):
         self.att_conv = nn.Sequential(Conv2dBlock(256, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn), Conv2dBlock(
             512, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn))
         self.att_convab1 = Conv2dBlock(
-            512, 13, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn)
+            512, 13, (1, 1), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn)
         self.att_convab2 = nn.Sequential(Conv2dBlock(13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), Conv2dBlock(
             13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), nn.Sigmoid())
         self.att_convab3 = nn.Sequential(Conv2dBlock(
             13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), nn.AdaptiveAvgPool2d(1))
         self.att_convcab1 = Conv2dBlock(
-            512, 13, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn)
+            512, 13, (1, 1), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn)
         self.att_convcab2 = nn.Sequential(Conv2dBlock(13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), Conv2dBlock(
             13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), nn.Sigmoid())
         self.att_convcab3 = nn.Sequential(Conv2dBlock(
@@ -385,9 +385,9 @@ class AttGAN():
         )
         self.G.train()
         if self.gpu:
-            self.G.cuda()
-        summary(self.G, [(3, args.img_size, args.img_size), (args.n_attrs,
-                                                             1, 1)], batch_size=4, device='cuda' if args.gpu else 'cpu')
+            self.G.cuda(args.gpunum)()
+        # summary(self.G, [(3, args.img_size, args.img_size), (args.n_attrs,
+                                                             1, 1)], batch_size=4, device='cuda(args.gpunum)' if args.gpu else 'cpu')
 
         self.D = Discriminators(
             args.dis_dim, args.dis_norm, args.dis_acti,
@@ -395,9 +395,9 @@ class AttGAN():
         )
         self.D.train()
         if self.gpu:
-            self.D.cuda()
-        summary(self.D, [(3, args.img_size, args.img_size)],
-                batch_size=4, device='cuda' if args.gpu else 'cpu')
+            self.D.cuda(args.gpunum)()
+        # summary(self.D, [(3, args.img_size, args.img_size)],
+                # batch_size=4, device='cuda(args.gpunum)' if args.gpu else 'cpu')
 
         if self.multi_gpu:
             self.G = nn.DataParallel(self.G)
@@ -433,13 +433,13 @@ class AttGAN():
         if self.mode == 'dcgan':  # sigmoid_cross_entropy
             gf_loss = F.binary_cross_entropy_with_logits(
                 d_fake, torch.ones_like(d_fake))
-        gc1_loss = F.binary_cross_entropy_with_logits(dc1_fake, att_b)
-        gc2_loss = F.binary_cross_entropy_with_logits(dc2_fake, 1-att_b)
+        gc1_loss = F.binary_cross_entropy_with_logits(torch.cat((dc1_fake,dc2_fake),1), torch.cat((att_b,1-att_b),1))
+        # gc2_loss = F.binary_cross_entropy_with_logits(dc2_fake, 1-att_b)
         att_tmp = torch.zeros_like(att_)
         catt_tmp = torch.zeros_like(catt_)
         # cm_loss = torch.zeros(1)
 
-        att_c = torch.abs(att_b-att_a).view(-1,13,1,1)
+        att_c = torch.abs(att_b-att_a).view(-1, 13, 1, 1)
 
         att_tmp = att_*(1-att_c) + catt_*(att_c)
         catt_tmp = att_*(att_c) + catt_*(1-att_c)
@@ -453,10 +453,10 @@ class AttGAN():
         cm_loss = LA.norm(att_tmp-att, ord=1, dim=(2, 3)) + \
             LA.norm(catt_tmp-catt, ord=1, dim=(2, 3))
 
-        cm_loss = torch.sum(cm_loss)/256
+        cm_loss = torch.mean(torch.sum(cm_loss,dim=(1,2,3))/256)
 
         gr_loss = F.l1_loss(img_recon, img_a)
-        g_loss = gf_loss + 10 * (gc1_loss+gc2_loss) + 100 * gr_loss + cm_loss
+        g_loss = gf_loss + 10 * (gc1_loss) + 100 * gr_loss + cm_loss
 
         self.optim_G.zero_grad()
         g_loss.backward()
@@ -464,7 +464,7 @@ class AttGAN():
 
         errG = {
             'g_loss': g_loss.item(), 'gf_loss': gf_loss.item(),
-            'gc_loss': gc1_loss.item()+gc2_loss.item(), 'gr_loss': gr_loss.item(),
+            'gc_loss': gc1_loss.item(), 'gr_loss': gr_loss.item(),
             'cm_loss': cm_loss.item()
         }
         return errG
@@ -483,7 +483,7 @@ class AttGAN():
                     beta = torch.rand_like(a)
                     b = a + 0.5 * a.var().sqrt() * beta
                 alpha = torch.rand(a.size(0), 1, 1, 1)
-                alpha = alpha.cuda() if self.gpu else alpha
+                alpha = alpha.cuda(args.gpunum)() if self.gpu else alpha
                 inter = a + alpha * (b - a)
                 return inter
             x = interpolate(real, fake).requires_grad_(True)
@@ -515,10 +515,10 @@ class AttGAN():
             df_gp = gradient_penalty(self.D, img_a)
         da_loss = F.binary_cross_entropy_with_logits(da_real, att_a)
         dca_loss = F.binary_cross_entropy_with_logits(dca_real, 1-att_a)
-        dc1_loss = F.binary_cross_entropy_with_logits(dc1_real, att_a)
-        dc2_loss = F.binary_cross_entropy_with_logits(dc2_real, 1-att_a)
+        dc1_loss = F.binary_cross_entropy_with_logits(torch.cat((dc1_real,dc2_real),1), torch.cat((att_a,1-att_a),1))
+        # dc2_loss = F.binary_cross_entropy_with_logits(dc2_real, 1-att_a)
         d_loss = df_loss + self.lambda_gp * df_gp + \
-            da_loss + dca_loss + dc1_loss + dc2_loss
+            da_loss + dca_loss + (dc1_loss )#+ dc2_loss)/2
 
         self.optim_D.zero_grad()
         d_loss.backward()
@@ -527,7 +527,7 @@ class AttGAN():
         errD = {
             'd_loss': d_loss.item(), 'df_loss': df_loss.item(),
             'df_gp': df_gp.item(), 'datt_loss': da_loss.item()+dca_loss.item(),
-            'dcls_loss': dc1_loss.item()+dc2_loss.item()
+            'dcls_loss': dc1_loss.item()
         }
         return errD
 
