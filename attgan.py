@@ -372,6 +372,7 @@ class AttGAN():
     def __init__(self, args):
         self.mode = args.mode
         self.gpu = args.gpu
+		self.gpunum = args.gpunum
         self.multi_gpu = args.multi_gpu if 'multi_gpu' in args else False
         self.lambda_1 = args.lambda_1
         self.lambda_2 = args.lambda_2
@@ -450,8 +451,8 @@ class AttGAN():
         #         cm_loss =cm_loss + LA.norm(catt_[i]-att[i],1)+LA.norm(att_[i]-catt[i],1)
 
         # cm_loss = (att_ + catt_ - att-catt)/256
-        cm_loss = LA.norm(att_tmp-att, ord=1, dim=(2, 3)) + \
-            LA.norm(catt_tmp-catt, ord=1, dim=(2, 3))
+        cm_loss = torch.norm(att_tmp-att, p=1, dim=(2, 3)) + \
+            torch.norm(catt_tmp-catt, p=1, dim=(2, 3))
 
         cm_loss = torch.mean(torch.sum(cm_loss,dim=(1,2,3))/256)
 
@@ -483,7 +484,7 @@ class AttGAN():
                     beta = torch.rand_like(a)
                     b = a + 0.5 * a.var().sqrt() * beta
                 alpha = torch.rand(a.size(0), 1, 1, 1)
-                alpha = alpha.cuda(args.gpunum)() if self.gpu else alpha
+                alpha = alpha.cuda(self.gpunum)() if self.gpu else alpha
                 inter = a + alpha * (b - a)
                 return inter
             x = interpolate(real, fake).requires_grad_(True)

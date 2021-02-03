@@ -82,7 +82,7 @@ def parse(args=None):
                         choices=['wgan', 'lsgan', 'dcgan'])
     parser.add_argument('--epochs', dest='epochs', type=int,
                         default=200, help='# of epochs')
-    parser.add_argument('--batch_size', dest='batch_size', type=int, default=1)
+    parser.add_argument('--batch_size', dest='batch_size', type=int, default=20)
     parser.add_argument('--num_workers', dest='num_workers',
                         type=int, default=0)
     parser.add_argument('--lr', dest='lr', type=float,
@@ -101,7 +101,7 @@ def parse(args=None):
                         type=int, default=16, help='# of sample images')
 
     parser.add_argument('--save_interval',
-                        dest='save_interval', type=int, default=1000)
+                        dest='save_interval', type=int, default=10000)
     parser.add_argument('--sample_interval',
                         dest='sample_interval', type=int, default=1000)
     parser.add_argument('--gpu', dest='gpu', action='store_true')
@@ -158,8 +158,8 @@ progressbar = Progressbar()
 writer = SummaryWriter(join('output', args.experiment_name, 'summary'))
 
 fixed_img_a, fixed_att_a = next(iter(valid_dataloader))
-fixed_img_a = fixed_img_a.cuda(args.gpunum)() if args.gpu else fixed_img_a
-fixed_att_a = fixed_att_a.cuda(args.gpunum)() if args.gpu else fixed_att_a
+fixed_img_a = fixed_img_a.cuda(args.gpunum)if args.gpu else fixed_img_a
+fixed_att_a = fixed_att_a.cuda(args.gpunum) if args.gpu else fixed_att_a
 fixed_att_a = fixed_att_a.type(torch.float)
 sample_att_b_list = [fixed_att_a]
 for i in range(args.n_attrs):
@@ -179,8 +179,8 @@ for epoch in range(args.epochs):
     for img_a, att_a in progressbar(train_dataloader):
         attgan.train()
 
-        img_a = img_a.cuda(args.gpunum)() if args.gpu else img_a
-        att_a = att_a.cuda(args.gpunum)() if args.gpu else att_a
+        img_a = img_a.cuda(args.gpunum) if args.gpu else img_a
+        att_a = att_a.cuda(args.gpunum) if args.gpu else att_a
         idx = torch.randperm(len(att_a))
         att_b = att_a[idx].contiguous()
 
@@ -229,7 +229,7 @@ for epoch in range(args.epochs):
                     if i > 0:
                         att_b_[..., i - 1] = att_b_[..., i - 1] * \
                             args.test_int / args.thres_int
-                    samples.append(attgan.G(fixed_img_a, att_b_))
+                    samples.append(attgan.G(fixed_img_a, att_b-fixed_att_a))
                 samples = torch.cat(samples, dim=3)
                 writer.add_image('sample', vutils.make_grid(
                     samples, nrow=1, normalize=True, range=(-1., 1.)), it+1)
