@@ -59,7 +59,7 @@ def parse(args=None):
     parser.add_argument('--dec_norm', dest='dec_norm',
                         type=str, default='batchnorm')
     parser.add_argument('--dis_norm', dest='dis_norm',
-                        type=str, default='instancenorm')
+                        type=str, default='batchnorm')
     parser.add_argument('--dis_fc_norm', dest='dis_fc_norm',
                         type=str, default='none')
     parser.add_argument('--enc_acti', dest='enc_acti',
@@ -105,8 +105,8 @@ def parse(args=None):
     parser.add_argument('--sample_interval',
                         dest='sample_interval', type=int, default=1000)
     parser.add_argument('--gpu', dest='gpu', action='store_true')
-    parser.add_argument('--gpunum',
-                        dest='gpunum', type=int, default=0)
+    # parser.add_argument('--gpunum',
+                        # dest='gpunum', type=int, default=0)
     parser.add_argument('--multi_gpu', dest='multi_gpu', action='store_true')
     parser.add_argument('--experiment_name', dest='experiment_name',
                         default=datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y"))
@@ -152,14 +152,16 @@ print('Training images:', len(train_dataset), '/',
       'Validating images:', len(valid_dataset))
 
 attgan = AttGAN(args)
-attgan.load(find_model(join('output', args.experiment_name, 'checkpoint'), args.load_epoch))
-
+try:
+    attgan.load(find_model(join('output', args.experiment_name, 'checkpoint'), args.load_epoch))
+except:
+    pass
 progressbar = Progressbar()
 writer = SummaryWriter(join('output', args.experiment_name, 'summary'))
 
 fixed_img_a, fixed_att_a = next(iter(valid_dataloader))
-fixed_img_a = fixed_img_a.cuda(args.gpunum)if args.gpu else fixed_img_a
-fixed_att_a = fixed_att_a.cuda(args.gpunum) if args.gpu else fixed_att_a
+fixed_img_a = fixed_img_a.cuda()if args.gpu else fixed_img_a
+fixed_att_a = fixed_att_a.cuda() if args.gpu else fixed_att_a
 fixed_att_a = fixed_att_a.type(torch.float)
 sample_att_b_list = [fixed_att_a]
 for i in range(args.n_attrs):
@@ -179,8 +181,8 @@ for epoch in range(args.epochs):
     for img_a, att_a in progressbar(train_dataloader):
         attgan.train()
 
-        img_a = img_a.cuda(args.gpunum) if args.gpu else img_a
-        att_a = att_a.cuda(args.gpunum) if args.gpu else att_a
+        img_a = img_a.cuda() if args.gpu else img_a
+        att_a = att_a.cuda() if args.gpu else att_a
         idx = torch.randperm(len(att_a))
         att_b = att_a[idx].contiguous()
 

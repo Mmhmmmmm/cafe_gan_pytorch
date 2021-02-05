@@ -12,8 +12,8 @@ import torch
 from torch.functional import norm
 import torch.nn as nn
 from nn import LinearBlock, Conv2dBlock, ConvTranspose2dBlock
-from torchsummary import summary
-from torch import linalg as LA
+#from torchsummary import summary
+#from torch import linalg as LA
 
 # This architecture is for images of 128x128
 # In the original AttGAN, slim.conv2d uses padding 'same'
@@ -303,29 +303,29 @@ class Discriminators(nn.Module):
         # cls1 and cls2's fc
         self.fc_cls1 = nn.Sequential(
             LinearBlock(1024 * self.f_size * self.f_size,
-                        fc_dim, fc_norm_fn, fc_acti_fn),
+                        fc_dim, fc_norm_fn, acti_fn = 'sigmoid'),
             LinearBlock(fc_dim, 13, 'none', 'none')
         )
         self.fc_cls2 = nn.Sequential(
             LinearBlock(1024 * self.f_size * self.f_size,
-                        fc_dim, fc_norm_fn, fc_acti_fn),
+                        fc_dim, fc_norm_fn, acti_fn  = 'sigmoid'),
             LinearBlock(fc_dim, 13, 'none', 'none')
         )
         # att
         self.att_conv = nn.Sequential(Conv2dBlock(256, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn), Conv2dBlock(
-            512, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn))
+            512, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn='none'))
         self.att_convab1 = Conv2dBlock(
-            512, 13, (1, 1), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn)
+            512, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn=acti_fn)
         self.att_convab2 = nn.Sequential(Conv2dBlock(13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), Conv2dBlock(
-            13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), nn.Sigmoid())
+            13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn='sigmoid'))
         self.att_convab3 = nn.Sequential(Conv2dBlock(
-            13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), nn.AdaptiveAvgPool2d(1))
+            13, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='none'), nn.AdaptiveAvgPool2d(1))
         self.att_convcab1 = Conv2dBlock(
-            512, 13, (1, 1), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn)
+            512, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn='sigmoid')
         self.att_convcab2 = nn.Sequential(Conv2dBlock(13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), Conv2dBlock(
-            13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), nn.Sigmoid())
+            13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn),)
         self.att_convcab3 = nn.Sequential(Conv2dBlock(
-            13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), nn.AdaptiveAvgPool2d(1))
+            13, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='none'), nn.AdaptiveAvgPool2d(1))
 
         # cls
 
@@ -338,11 +338,13 @@ class Discriminators(nn.Module):
         self.att = self.att_convab2(af)
         as1 = self.att_convab3(af)
         as1 = as1.view(as1.size(0), -1)
+        as1 = torch.sigmoid(as1)
         # co-attention branch net
         caf = self.att_convcab1(ax)
         self.catt = self.att_convcab2(caf)
         as2 = self.att_convcab3(caf)
         as2 = as2.view(as2.size(0), -1)
+        as2 = torch.sigmoid(as2)
         # class
         cls1 = torch.einsum('binm,bjnm->bijnm', h, self.att)
         cls1 = cls1.view(cls1.size(0), -1, 16, 16)
@@ -372,13 +374,13 @@ class AttGAN():
     def __init__(self, args):
         self.mode = args.mode
         self.gpu = args.gpu
-		self.gpunum = args.gpunum
+        # self.gpunum = args.gpunum
         self.multi_gpu = args.multi_gpu if 'multi_gpu' in args else False
         self.lambda_1 = args.lambda_1
         self.lambda_2 = args.lambda_2
         self.lambda_3 = args.lambda_3
         self.lambda_gp = args.lambda_gp
-
+        # self.gpunum=args.gpunum
         self.G = Generator(
             args.enc_dim, args.enc_layers, args.enc_norm, args.enc_acti,
             args.dec_dim, args.dec_layers, args.dec_norm, args.dec_acti,
@@ -386,9 +388,9 @@ class AttGAN():
         )
         self.G.train()
         if self.gpu:
-            self.G.cuda(args.gpunum)()
+            self.G.cuda()
         # summary(self.G, [(3, args.img_size, args.img_size), (args.n_attrs,
-                                                             1, 1)], batch_size=4, device='cuda(args.gpunum)' if args.gpu else 'cpu')
+                                                             #1, 1)], batch_size=4, device='cuda(args.gpunum)' if args.gpu else 'cpu')
 
         self.D = Discriminators(
             args.dis_dim, args.dis_norm, args.dis_acti,
@@ -396,7 +398,7 @@ class AttGAN():
         )
         self.D.train()
         if self.gpu:
-            self.D.cuda(args.gpunum)()
+            self.D.cuda()
         # summary(self.D, [(3, args.img_size, args.img_size)],
                 # batch_size=4, device='cuda(args.gpunum)' if args.gpu else 'cpu')
 
@@ -454,7 +456,7 @@ class AttGAN():
         cm_loss = torch.norm(att_tmp-att, p=1, dim=(2, 3)) + \
             torch.norm(catt_tmp-catt, p=1, dim=(2, 3))
 
-        cm_loss = torch.mean(torch.sum(cm_loss,dim=(1,2,3))/256)
+        cm_loss = torch.mean(torch.sum(cm_loss,dim=(1))/256)
 
         gr_loss = F.l1_loss(img_recon, img_a)
         g_loss = gf_loss + 10 * (gc1_loss) + 100 * gr_loss + cm_loss
@@ -484,7 +486,7 @@ class AttGAN():
                     beta = torch.rand_like(a)
                     b = a + 0.5 * a.var().sqrt() * beta
                 alpha = torch.rand(a.size(0), 1, 1, 1)
-                alpha = alpha.cuda(self.gpunum)() if self.gpu else alpha
+                alpha = alpha.cuda() if self.gpu else alpha
                 inter = a + alpha * (b - a)
                 return inter
             x = interpolate(real, fake).requires_grad_(True)
