@@ -31,6 +31,7 @@ def parse(args=None):
     parser.add_argument('--custom_attr', type=str, default='./data/list_attr_custom.txt')
     parser.add_argument('--gpu', action='store_true')
     parser.add_argument('--multi_gpu', action='store_true')
+    # parser.add_argument('--gpunum', dest='gpunum', type=int, default=0)
     return parser.parse_args(args)
 
 args_ = parse()
@@ -90,26 +91,30 @@ for idx, (img_a, att_a) in enumerate(test_dataloader):
     att_a = att_a.type(torch.float)
     
     att_b_list = [att_a]
-    for i in range(args.n_attrs):
-        tmp = att_a.clone()
-        tmp[:, i] = 1 - tmp[:, i]
-        tmp = check_attribute_conflict(tmp, args.attrs[i], args.attrs)
-        att_b_list.append(tmp)
+    # for i in range(args.n_attrs):
+    #     tmp = att_a.clone()
+    #     tmp[:, i] = 1 - tmp[:, i]
+    #     tmp = check_attribute_conflict(tmp, args.attrs[i], args.attrs)
+    #     att_b_list.append(tmp)
 
     with torch.no_grad():
         samples = [img_a]
         for i, att_b in enumerate(att_b_list):
-            att_b_ = (att_b * 2 - 1) * args.thres_int
-            if i > 0:
-                att_b_[..., i - 1] = att_b_[..., i - 1] * args.test_int / args.thres_int
-            samples.append(attgan.G(img_a, att_b-att_a))
-        samples = torch.cat(samples, dim=3)
+            # att_b_ = (att_b * 2 - 1) * args.thres_int
+            # if i > 0:
+            #     att_b_[..., i - 1] = att_b_[..., i - 1] * args.test_int / args.thres_int
+            fc_adv, as1, as2, cls1, cls2, [att, catt, fe, per1, per2] = attgan.D(img_a)
+        # samples = torch.cat(samples, dim=3)
+        samples = torch.cat((att,catt),dim=1)
+        samples = samples.permute(1,0,2,3)
+        print(samples,samples.max(),samples.min(),samples.mean())
         if args.custom_img:
             out_file = test_dataset.images[idx]
         else:
-            out_file = '{:06d}.jpg'.format(idx + 182638)
+            out_file = '{:06d}.jpg'.format(idx + 180000)
         vutils.save_image(
             samples, join(output_path, out_file),
-            nrow=1, normalize=True, range=(-1., 1.)
+            nrow=13, normalize=True
         )
         print('{:s} done!'.format(out_file))
+        print(att_a)

@@ -303,27 +303,27 @@ class Discriminators(nn.Module):
         # cls1 and cls2's fc
         self.fc_cls1 = nn.Sequential(
             LinearBlock(1024 * self.f_size * self.f_size,
-                        fc_dim, fc_norm_fn, acti_fn = 'sigmoid'),
-            LinearBlock(fc_dim, 13, 'none', 'none')
+                        fc_dim, fc_norm_fn, acti_fn = acti_fn),
+            LinearBlock(fc_dim, 13, 'none', 'sigmoid')
         )
         self.fc_cls2 = nn.Sequential(
             LinearBlock(1024 * self.f_size * self.f_size,
-                        fc_dim, fc_norm_fn, acti_fn  = 'sigmoid'),
-            LinearBlock(fc_dim, 13, 'none', 'none')
+                        fc_dim, fc_norm_fn, acti_fn  = acti_fn),
+            LinearBlock(fc_dim, 13, 'none', 'sigmoid')
         )
         # att
-        self.att_conv = nn.Sequential(Conv2dBlock(256, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn), Conv2dBlock(
+        self.att_conv = nn.Sequential(Conv2dBlock(256, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn='none'), Conv2dBlock(
             512, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn='none'))
         self.att_convab1 = Conv2dBlock(
-            512, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn=acti_fn)
-        self.att_convab2 = nn.Sequential(Conv2dBlock(13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), Conv2dBlock(
-            13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn='sigmoid'))
+            512, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='none')
+        self.att_convab2 = nn.Sequential(Conv2dBlock(13, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='none'), Conv2dBlock(
+            13, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='sigmoid'))
         self.att_convab3 = nn.Sequential(Conv2dBlock(
             13, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='none'), nn.AdaptiveAvgPool2d(1))
         self.att_convcab1 = Conv2dBlock(
-            512, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn=acti_fn)
-        self.att_convcab2 = nn.Sequential(Conv2dBlock(13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn=acti_fn), Conv2dBlock(
-            13, 13, (1, 1), stride=1, padding=0, norm_fn=norm_fn, acti_fn='sigmoid'),)
+            512, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='none')
+        self.att_convcab2 = nn.Sequential(Conv2dBlock(13, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='none'), Conv2dBlock(
+            13, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='sigmoid'),)
         self.att_convcab3 = nn.Sequential(Conv2dBlock(
             13, 13, (1, 1), stride=1, padding=0, norm_fn='none', acti_fn='none'), nn.AdaptiveAvgPool2d(1))
 
