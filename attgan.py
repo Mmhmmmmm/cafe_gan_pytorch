@@ -436,7 +436,7 @@ class AttGAN():
         if self.mode == 'dcgan':  # sigmoid_cross_entropy
             gf_loss = F.binary_cross_entropy_with_logits(
                 d_fake, torch.ones_like(d_fake))
-        gc1_loss = F.binary_cross_entropy_with_logits(torch.cat((dc1_fake,dc2_fake),1), torch.cat((att_b,1-att_b),1))
+        gc1_loss = F.binary_cross_entropy(torch.cat((dc1_fake,dc2_fake),1), torch.cat((att_b,1-att_b),1))
         # gc2_loss = F.binary_cross_entropy_with_logits(dc2_fake, 1-att_b)
         att_tmp = torch.zeros_like(att_)
         catt_tmp = torch.zeros_like(catt_)
@@ -516,9 +516,9 @@ class AttGAN():
                 F.binary_cross_entropy_with_logits(
                     d_fake, torch.zeros_like(d_fake))
             df_gp = gradient_penalty(self.D, img_a)
-        da_loss = F.binary_cross_entropy_with_logits(da_real, att_a)
-        dca_loss = F.binary_cross_entropy_with_logits(dca_real, 1-att_a)
-        dc1_loss = F.binary_cross_entropy_with_logits(torch.cat((dc1_real,dc2_real),1), torch.cat((att_a,1-att_a),1))
+        da_loss = F.binary_cross_entropy(da_real, att_a)
+        dca_loss = F.binary_cross_entropy(dca_real, 1-att_a)
+        dc1_loss = F.binary_cross_entropy(torch.cat((dc1_real,dc2_real),1), torch.cat((att_a,1-att_a),1))
         # dc2_loss = F.binary_cross_entropy_with_logits(dc2_real, 1-att_a)
         d_loss = df_loss + self.lambda_gp * df_gp + \
             da_loss + dca_loss + (dc1_loss )#+ dc2_loss)/2
