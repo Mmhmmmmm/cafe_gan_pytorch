@@ -254,7 +254,7 @@ class Discriminators(nn.Module):
     def __init__(self, dim=64, norm_fn='instancenorm', acti_fn='lrelu',
                  fc_dim=1024, fc_norm_fn='none', fc_acti_fn='lrelu', n_layers=5, img_size=128):
         super(Discriminators, self).__init__()
-        self.f_size = img_size // 2**n_layers
+        self.f_size = img_size // 2**(n_layers+1)
 
         layers = []
         n_in = 3
@@ -275,42 +275,49 @@ class Discriminators(nn.Module):
         self.conv2 = nn.Sequential(*layers2)
 
         # cls1 net
-        n_in = 13*256
-        layers3 = []
-        for i in range(3, n_layers):
-            n_out = min(dim*2**i, MAX_DIM)
-            layers3 += [Conv2dBlock(
-                n_in, n_out, (4, 4), stride=2, padding=1, norm_fn=norm_fn, acti_fn=acti_fn
-            )]
-            n_in = n_out
-        self.convcls1 = nn.Sequential(*layers3)
+        # n_in = 256
+        # layers3 = []
+        # for i in range(3, n_layers):
+        #     n_out = min(dim*2**i, MAX_DIM)
+        #     layers3 += [Conv2dBlock(
+        #         n_in, n_out, (4, 4), stride=2, padding=1, norm_fn=norm_fn, acti_fn=acti_fn
+        #     )]
+        #     n_in = n_out
+        self.convcls1 = nn.Sequential(Conv2dBlock(
+                256, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn
+            ),Conv2dBlock(
+                512, 1024, (4, 4), stride=2, padding=1, norm_fn=norm_fn, acti_fn=acti_fn
+            ),nn.AvgPool2d(7,stride=1)
+            )
         # cls2 net
-        n_in = 13*256
-        layers4 = []
-        for i in range(3, n_layers):
-            n_out = min(dim*2**i, MAX_DIM)
-            layers4 += [Conv2dBlock(
-                n_in, n_out, (4, 4), stride=2, padding=1, norm_fn=norm_fn, acti_fn=acti_fn
-            )]
-            n_in = n_out
-        self.convcls2 = nn.Sequential(*layers4)
+        # n_in = 13*256
+        # layers4 = []
+        # for i in range(3, n_layers):
+        #     n_out = min(dim*2**i, MAX_DIM)
+        #     layers4 += [Conv2dBlock(
+        #         n_in, n_out, (4, 4), stride=2, padding=1, norm_fn=norm_fn, acti_fn=acti_fn
+        #     )]
+        #     n_in = n_out
+        # self.convcls2 = nn.Sequential(*layers4)
+        self.convcls2 = nn.Sequential(Conv2dBlock(
+                256, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn=acti_fn
+            ),Conv2dBlock(
+                512, 1024, (4, 4), stride=2, padding=1, norm_fn=norm_fn, acti_fn=acti_fn
+            ),nn.AvgPool2d(7,stride=1)
+            )
         # abv's fc
         self.fc_adv = nn.Sequential(
-            LinearBlock(1024 * self.f_size * self.f_size,
+            LinearBlock(1024 * 4 * 4,
                         fc_dim, fc_norm_fn, fc_acti_fn),
             LinearBlock(fc_dim, 1, 'none', 'none')
         )
         # cls1 and cls2's fc
-        self.fc_cls1 = nn.Sequential(
-            LinearBlock(1024 * self.f_size * self.f_size,
-                        fc_dim, fc_norm_fn, acti_fn = acti_fn),
-            LinearBlock(fc_dim, 13, 'none', 'sigmoid')
-        )
-        self.fc_cls2 = nn.Sequential(
-            LinearBlock(1024 * self.f_size * self.f_size,
-                        fc_dim, fc_norm_fn, acti_fn  = acti_fn),
-            LinearBlock(fc_dim, 13, 'none', 'sigmoid')
-        )
+        fc_cls1 = [nn.Sequential(
+            LinearBlock(1024 * self.f_size * self.f_size, 1, 'none', 'sigmoid')) for _ in range(13)]
+        fc_cls2 = [nn.Sequential(
+            LinearBlock(1024 * self.f_size * self.f_size, 1, 'none', 'sigmoid')) for _ in range(13)]
+        self.fc_cls1 = nn.ModuleList(fc_cls1)
+        self.fc_cls2 = nn.ModuleList(fc_cls2)
         # att
         self.att_conv = nn.Sequential(Conv2dBlock(256, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn='none'), Conv2dBlock(
             512, 512, (3, 3), stride=1, padding=1, norm_fn=norm_fn, acti_fn='none'))
@@ -335,37 +342,59 @@ class Discriminators(nn.Module):
         ax = self.att_conv(h)
         # attention branch net
         af = self.att_convab1(ax)
-        self.att = self.att_convab2(af)
+        att = self.att_convab2(af)
         as1 = self.att_convab3(af)
         as1 = as1.view(as1.size(0), -1)
         as1 = torch.sigmoid(as1)
         # co-attention branch net
         caf = self.att_convcab1(ax)
-        self.catt = self.att_convcab2(caf)
+        catt = self.att_convcab2(caf)
         as2 = self.att_convcab3(caf)
         as2 = as2.view(as2.size(0), -1)
         as2 = torch.sigmoid(as2)
         # class
-        cls1 = torch.einsum('binm,bjnm->bijnm', h, self.att)
-        cls1 = cls1.view(cls1.size(0), -1, 16, 16)
-        # print(h.size(), self.att.size(), cls1.size())
+        b,c,hs,ws = h.shape
+        cls1 = []
+        cls2 = []
+        for i in range(13):
+            itematt = att[:,i].view(b,1,hs,ws)
+            itemcls1 = h * itematt
+            itemcls1 = self.convcls1(itemcls1)
+            itemcls1 = itemcls1.view(b,-1)
+            cls1.append(self.fc_cls1[i](itemcls1))
 
-        per1 = cls1
-        cls1 = self.convcls1(cls1)
-        cls1 = cls1.view(cls1.size(0), -1)
-        cls1 = self.fc_cls1(cls1)
-        cls2 = torch.einsum('binm,bjnm->bijnm', h, self.catt)
-        cls2 = cls2.view(cls2.size(0), -1, 16, 16)
-        per2 = cls2
-        cls2 = self.convcls2(cls2)
-        cls2 = cls2.view(cls2.size(0), -1)
-        cls2 = self.fc_cls2(cls2)
+            itemcatt = catt[:,i].viiew(b,1,hs,ws)
+            itemcls2 = h* itemcatt
+            itemcls2 = self.convcls2(itemcls2)
+            itemcls2 = itemcls2.view(b,-1)
+            cls2.append(self.fc_cls2[i](itemcls2))
+        
+        cls1 = torch.cat(cls1,dim=1)
+        cls2 = torch.cat(cls2,dim=1)
+
+
+
+
+        # cls1 = torch.einsum('binm,bjnm->bijnm', h, self.att)
+        # cls1 = cls1.view(cls1.size(0), -1, 16, 16)
+        # # print(h.size(), self.att.size(), cls1.size())
+
+        # per1 = cls1
+        # cls1 = self.convcls1(cls1)
+        # cls1 = cls1.view(cls1.size(0), -1)
+        # cls1 = self.fc_cls1(cls1)
+        # cls2 = torch.einsum('binm,bjnm->bijnm', h, self.catt)
+        # cls2 = cls2.view(cls2.size(0), -1, 16, 16)
+        # per2 = cls2
+        # cls2 = self.convcls2(cls2)
+        # cls2 = cls2.view(cls2.size(0), -1)
+        # cls2 = self.fc_cls2(cls2)
 
         # abv
         h = self.conv2(h)
 
         h = h.view(h.size(0), -1)
-        return self.fc_adv(h), as1, as2, cls1, cls2, [self.att, self.catt, fe, per1, per2]
+        return self.fc_adv(h), as1, as2, cls1, cls2, [att, catt, fe]
 
 
 # multilabel_soft_margin_loss = sigmoid + binary_cross_entropy
@@ -425,9 +454,9 @@ class AttGAN():
         img_fake = self.G(zs_a, att_b-att_a, mode='dec')
         img_recon = self.G(zs_a, att_a-att_a, mode='dec')
         d_real, da_real, dca_real, dc1_real, dc2_real, [
-            att_, catt_, fe_, per1_, per2_] = self.D(img_a)
+            att_, catt_, fe_] = self.D(img_a)
         d_fake, da_fake, dca_fake, dc1_fake, dc2_fake, [
-            att, catt, fe, per1, per2] = self.D(img_fake)
+            att, catt, fe] = self.D(img_fake)
 
         if self.mode == 'wgan':
             gf_loss = -d_fake.mean()
@@ -436,7 +465,7 @@ class AttGAN():
         if self.mode == 'dcgan':  # sigmoid_cross_entropy
             gf_loss = F.binary_cross_entropy_with_logits(
                 d_fake, torch.ones_like(d_fake))
-        gc1_loss = F.binary_cross_entropy(torch.cat((dc1_fake,dc2_fake),1), torch.cat((att_b,1-att_b),1))
+        gc1_loss = F.binary_cross_entropy(torch.cat((dc1_fake,dc2_fake),1), torch.cat((att_b,att_b),1))
         # gc2_loss = F.binary_cross_entropy_with_logits(dc2_fake, 1-att_b)
         att_tmp = torch.zeros_like(att_)
         catt_tmp = torch.zeros_like(catt_)
@@ -518,7 +547,7 @@ class AttGAN():
             df_gp = gradient_penalty(self.D, img_a)
         da_loss = F.binary_cross_entropy(da_real, att_a)
         dca_loss = F.binary_cross_entropy(dca_real, 1-att_a)
-        dc1_loss = F.binary_cross_entropy(torch.cat((dc1_real,dc2_real),1), torch.cat((att_a,1-att_a),1))
+        dc1_loss = F.binary_cross_entropy(torch.cat((dc1_real,dc2_real),1), torch.cat((att_a,att_a),1))
         # dc2_loss = F.binary_cross_entropy_with_logits(dc2_real, 1-att_a)
         d_loss = df_loss + self.lambda_gp * df_gp + \
             da_loss + dca_loss + (dc1_loss )#+ dc2_loss)/2
