@@ -363,7 +363,7 @@ class Discriminators(nn.Module):
             itemcls1 = itemcls1.view(b,-1)
             cls1.append(self.fc_cls1[i](itemcls1))
 
-            itemcatt = catt[:,i].viiew(b,1,hs,ws)
+            itemcatt = catt[:,i].view(b,1,hs,ws)
             itemcls2 = h* itemcatt
             itemcls2 = self.convcls2(itemcls2)
             itemcls2 = itemcls2.view(b,-1)
