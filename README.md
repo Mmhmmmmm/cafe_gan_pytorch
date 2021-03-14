@@ -1,13 +1,3 @@
-# unoffical code for cafe-gan  baseed AttGAN 
-# just for UESTC-zjw use to experiment 
-# if you want to use it or you find some error in it ,you could tell us .thanks.
-differents:
-
-- add attention branch
-- add lose
-- not have inject layers becauseof STGAN
-other is same
-
 # AttGAN-PyTorch
 
 A PyTorch implementation of AttGAN - [Arbitrary Facial Attribute Editing: Only Change What You Want](https://arxiv.org/abs/1711.10678)
@@ -71,7 +61,8 @@ CUDA_VISIBLE_DEVICES=0 \
 python train.py \
 --img_size 128 \
 --shortcut_layers 1 \
---experiment_name 128_shortcut1_none \
+--inject_layers 1 \
+--experiment_name 128_shortcut1_inject1_none \
 --gpu
 ```
 

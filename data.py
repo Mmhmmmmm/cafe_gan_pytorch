@@ -29,7 +29,7 @@ class Custom(data.Dataset):
     
     def __getitem__(self, index):
         img = self.tf(Image.open(os.path.join(self.data_path, self.images[index])))
-        att = torch.tensor((self.labels[index] + 1) // 2)
+        att = (torch.tensor(self.labels[index]) + 1)  // 2
         return img, att
     
     def __len__(self):
@@ -53,6 +53,9 @@ class CelebA(data.Dataset):
         if mode == 'test':
             self.images = images[182637:]
             self.labels = labels[182637:]
+        if mode == 'mytest':
+            self.images = images[-16:]
+            self.labels = labels[-16:]
         
         self.tf = transforms.Compose([
             transforms.CenterCrop(170),
@@ -64,7 +67,7 @@ class CelebA(data.Dataset):
         self.length = len(self.images)
     def __getitem__(self, index):
         img = self.tf(Image.open(os.path.join(self.data_path, self.images[index])))
-        att = torch.tensor((self.labels[index] + 1) // 2)
+        att = (torch.FloatTensor(self.labels[index]) + 1) // 2
         return img, att
     def __len__(self):
         return self.length
